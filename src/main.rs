@@ -2,6 +2,7 @@ mod build;
 mod clean;
 mod dev;
 mod doctor;
+mod environment;
 mod generator;
 mod install;
 mod logs;

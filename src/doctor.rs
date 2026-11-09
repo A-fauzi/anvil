@@ -1,8 +1,6 @@
-use crate::{project, ui};
+use crate::{environment::Environment, ui};
 use anyhow::Result;
-use std::env;
-use std::path::Path;
-use std::process::Command;
+use std::{path::Path, process::Command};
 
 struct Check {
     name: &'static str,
@@ -10,9 +8,8 @@ struct Check {
     detail: String,
 }
 
-fn command_version(command: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(command).args(args).output().ok()?;
-
+fn command_version(path: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new(path).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -28,57 +25,29 @@ fn command_version(command: &str, args: &[&str]) -> Option<String> {
     Some(output.lines().next().unwrap_or("").to_string())
 }
 
-fn check_command(name: &'static str, command: &str, args: &[&str]) -> Check {
-    match command_version(command, args) {
-        Some(version) => Check {
+fn check_command(name: &'static str, path: Option<&Path>, args: &[&str]) -> Check {
+    match path.and_then(|path| command_version(path, args).map(|version| (path, version))) {
+        Some((path, version)) => Check {
             name,
             passed: true,
-            detail: version,
+            detail: format!("{version} ({})", path.display()),
         },
         None => Check {
             name,
             passed: false,
-            detail: format!("{command} not found or unavailable"),
+            detail: "Not found or unavailable".into(),
         },
     }
 }
 
-fn find_java() -> String {
-    if let Ok(java_home) = env::var("JAVA_HOME") {
-        let java = Path::new(&java_home).join("bin/java");
-        if java.is_file() {
-            return java.display().to_string();
-        }
-    }
-
-    "java".into()
-}
-
-fn check_java() -> Check {
-    let command = find_java();
-
-    match command_version(&command, &["-version"]) {
-        Some(version) => Check {
-            name: "Java",
-            passed: true,
-            detail: format!("{version} ({command})"),
-        },
-        None => Check {
-            name: "Java",
-            passed: false,
-            detail: format!("{command} not found or unavailable"),
-        },
-    }
-}
-
-fn check_path(name: &'static str, path: Option<String>) -> Check {
-    match path {
-        Some(value) if Path::new(&value).is_dir() => Check {
+fn check_path(name: &'static str, path: Option<&Path>) -> Check {
+    match path.filter(|path| path.is_dir()) {
+        Some(path) => Check {
             name,
             passed: true,
-            detail: value,
+            detail: path.display().to_string(),
         },
-        _ => Check {
+        None => Check {
             name,
             passed: false,
             detail: "Not found".into(),
@@ -86,33 +55,20 @@ fn check_path(name: &'static str, path: Option<String>) -> Check {
     }
 }
 
-fn find_ndk() -> Option<String> {
-    if let Ok(path) = env::var("ANDROID_NDK_HOME") {
-        if Path::new(&path).is_dir() {
-            return Some(path);
-        }
+fn check_flag(name: &'static str, passed: bool, detail: &'static str) -> Check {
+    Check {
+        name,
+        passed,
+        detail: if passed { detail } else { "Not available" }.into(),
     }
-
-    let sdk = env::var("ANDROID_HOME")
-        .or_else(|_| env::var("ANDROID_SDK_ROOT"))
-        .ok()?;
-
-    let mut versions: Vec<_> = std::fs::read_dir(Path::new(&sdk).join("ndk"))
-        .ok()?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
-        .collect();
-
-    versions.sort();
-    versions.last().map(|path| path.display().to_string())
 }
 
-fn connected_devices() -> Vec<(String, String)> {
-    let output = match Command::new(project::adb_path())
-        .args(["devices", "-l"])
-        .output()
-    {
+fn connected_devices(adb: Option<&Path>) -> Vec<(String, String)> {
+    let Some(adb) = adb else {
+        return Vec::new();
+    };
+
+    let output = match Command::new(adb).args(["devices", "-l"]).output() {
         Ok(output) if output.status.success() => output,
         _ => return Vec::new(),
     };
@@ -124,12 +80,7 @@ fn connected_devices() -> Vec<(String, String)> {
             let mut fields = line.split_whitespace();
             let id = fields.next()?;
             let state = fields.next()?;
-
-            if id.is_empty() {
-                return None;
-            }
-
-            Some((id.to_string(), state.to_string()))
+            (!id.is_empty()).then(|| (id.to_string(), state.to_string()))
         })
         .collect()
 }
@@ -140,42 +91,39 @@ pub fn run() -> Result<()> {
         "Checking your Android development toolchain",
     );
 
-    let sdk = env::var("ANDROID_HOME")
-        .or_else(|_| env::var("ANDROID_SDK_ROOT"))
-        .ok();
+    let env = Environment::detect();
 
     let checks = vec![
-        check_command("Rust", "rustc", &["--version"]),
-        check_command("Cargo", "cargo", &["--version"]),
-        check_java(),
-        check_path("Android SDK", sdk.clone()),
-        check_path("Android NDK", find_ndk()),
-        check_command(
-            "ADB",
-            project::adb_path().to_str().unwrap_or("adb"),
-            &["version"],
+        check_command("Rust", env.rustc.as_deref(), &["--version"]),
+        check_command("Cargo", env.cargo.as_deref(), &["--version"]),
+        check_command("Java", env.java.as_deref(), &["-version"]),
+        check_path("Android SDK", env.android_sdk.as_deref()),
+        check_path("Android NDK", env.android_ndk.as_deref()),
+        check_command("ADB", env.adb.as_deref(), &["version"]),
+        check_command("SDK Manager", env.sdkmanager.as_deref(), &["--version"]),
+        check_flag(
+            "Rust Android target",
+            env.android_target,
+            "aarch64-linux-android installed",
         ),
+        check_flag("cargo-ndk", env.cargo_ndk, "cargo-ndk available"),
     ];
 
     ui::section("TOOLCHAIN");
 
     let mut passed = 0;
-
     for check in &checks {
         if check.passed {
             passed += 1;
         }
-
         ui::status(check.passed, check.name, &check.detail);
     }
 
     ui::section("BUILD SYSTEM");
     ui::info("Gradle uses the project's Gradle Wrapper");
 
-    if let Some(sdk) = &sdk {
-        let platforms = Path::new(sdk).join("platforms");
-
-        let count = std::fs::read_dir(platforms)
+    if let Some(sdk) = &env.android_sdk {
+        let count = std::fs::read_dir(sdk.join("platforms"))
             .map(|entries| entries.filter_map(|entry| entry.ok()).count())
             .unwrap_or(0);
 
@@ -183,8 +131,7 @@ pub fn run() -> Result<()> {
     }
 
     ui::section("CONNECTED DEVICES");
-
-    let devices = connected_devices();
+    let devices = connected_devices(env.adb.as_deref());
 
     if devices.is_empty() {
         ui::warning("No Android devices connected");
@@ -195,7 +142,9 @@ pub fn run() -> Result<()> {
                 "unauthorized" => {
                     ui::warning(&format!("{id} — authorize USB debugging"));
                 }
-                "offline" => ui::warning(&format!("{id} — device offline")),
+                "offline" => {
+                    ui::warning(&format!("{id} — device offline"));
+                }
                 _ => ui::warning(&format!("{id} — state: {state}")),
             }
         }
@@ -203,20 +152,14 @@ pub fn run() -> Result<()> {
 
     ui::section("READINESS");
 
-    let environment_ready = passed == checks.len();
-
+    let ready = passed == checks.len();
     ui::status(
-        environment_ready,
+        ready,
         "Environment",
-        if environment_ready {
-            "READY"
-        } else {
-            "NEEDS ATTENTION"
-        },
+        if ready { "READY" } else { "NEEDS ATTENTION" },
     );
 
     let ready_devices = devices.iter().any(|(_, state)| state == "device");
-
     ui::status(
         ready_devices,
         "Deployment",

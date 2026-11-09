@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::ui;
+use crate::{environment::Environment, ui};
 
 fn absolute(path: &Path) -> Result<PathBuf> {
     if path.is_absolute() {
@@ -32,6 +32,41 @@ pub fn run(project_dir: &Path, verbose: bool) -> Result<()> {
         bail!("Rust crate manifest not found: {}", rust_manifest.display());
     }
 
+    let environment = Environment::detect();
+
+    let cargo = environment
+        .cargo
+        .as_deref()
+        .context("Cargo not found. Install Rust before building.")?;
+
+    let java = environment
+        .java
+        .as_deref()
+        .context("Java not found. Install a supported JDK.")?;
+
+    let java_home = java
+        .parent()
+        .and_then(Path::parent)
+        .context("Unable to resolve JAVA_HOME from Java executable")?;
+
+    let android_sdk = environment
+        .android_sdk
+        .as_deref()
+        .context("Android SDK not found. Configure ANDROID_HOME.")?;
+
+    let android_ndk = environment
+        .android_ndk
+        .as_deref()
+        .context("Android NDK not found. Install an Android NDK.")?;
+
+    if !environment.android_target {
+        bail!("Rust target aarch64-linux-android is missing. Install it with rustup.");
+    }
+
+    if !environment.cargo_ndk {
+        bail!("cargo-ndk is missing. Install it with cargo install cargo-ndk.");
+    }
+
     let rust_dir = rust_manifest.parent().context("Invalid Rust crate path")?;
     let library = rust_dir.join("target/aarch64-linux-android/release/libapp_core.so");
     let bindings = project.join("uniffi/kotlin");
@@ -44,8 +79,12 @@ pub fn run(project_dir: &Path, verbose: bool) -> Result<()> {
     let mut progress = ui::BuildProgress::new(3, verbose)?;
 
     progress.run_step(
-        Command::new("cargo")
+        Command::new(cargo)
             .current_dir(rust_dir)
+            .env("ANDROID_HOME", android_sdk)
+            .env("ANDROID_SDK_ROOT", android_sdk)
+            .env("ANDROID_NDK_HOME", android_ndk)
+            .env("NDK_HOME", android_ndk)
             .args(["ndk", "-t", "arm64-v8a", "build", "--manifest-path"])
             .arg(&rust_manifest)
             .arg("--release"),
@@ -65,8 +104,12 @@ pub fn run(project_dir: &Path, verbose: bool) -> Result<()> {
         .with_context(|| format!("Creating bindings directory: {}", bindings.display()))?;
 
     progress.run_step(
-        Command::new("cargo")
+        Command::new(cargo)
             .current_dir(rust_dir)
+            .env("ANDROID_HOME", android_sdk)
+            .env("ANDROID_SDK_ROOT", android_sdk)
+            .env("ANDROID_NDK_HOME", android_ndk)
+            .env("NDK_HOME", android_ndk)
             .args(["run", "--manifest-path"])
             .arg(&rust_manifest)
             .args([
@@ -92,6 +135,9 @@ pub fn run(project_dir: &Path, verbose: bool) -> Result<()> {
     progress.run_step(
         Command::new("./gradlew")
             .current_dir(&android)
+            .env("JAVA_HOME", java_home)
+            .env("ANDROID_HOME", android_sdk)
+            .env("ANDROID_SDK_ROOT", android_sdk)
             .arg("assembleDebug"),
         "Build Android debug APK",
     )?;

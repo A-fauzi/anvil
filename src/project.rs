@@ -34,14 +34,5 @@ pub fn package_name(project_dir: &Path) -> Result<String> {
 }
 
 pub fn adb_path() -> PathBuf {
-    let sdk = std::env::var_os("ANDROID_HOME").or_else(|| std::env::var_os("ANDROID_SDK_ROOT"));
-
-    if let Some(sdk) = sdk {
-        let candidate = PathBuf::from(sdk).join("platform-tools/adb");
-        if candidate.is_file() {
-            return candidate;
-        }
-    }
-
-    PathBuf::from("adb")
+    crate::environment::resolve_adb().unwrap_or_else(|| PathBuf::from("adb"))
 }
