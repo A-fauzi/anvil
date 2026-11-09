@@ -1,0 +1,35 @@
+# Rust
+/target/
+**/target/
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+
+# Generated experiment projects
+/anvil-smoke-test/
+/anvil-binding-audit/
+/anvil-build-test/
+/anvil-runtime-test/
+/anvil-generator-audit/
+/AnvilUiSmoke/
+/123app/
+/123app-check/
+/!!!/
+/My App/
+/app"test/
+/app&test/
+
+# Local audit and playground projects
+/anvil-embedded-audit/
+/anvil-readme-audit/
+/anvil-playground/

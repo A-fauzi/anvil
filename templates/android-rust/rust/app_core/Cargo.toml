@@ -1,0 +1,21 @@
+[package]
+name = "app_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "app_core"
+crate-type = ["cdylib", "lib"]
+
+[features]
+uniffi-cli = ["uniffi/cli"]
+
+[dependencies]
+uniffi = "=0.32.2"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["uniffi-cli"]
+test = false
+bench = false

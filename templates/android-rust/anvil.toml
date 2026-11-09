@@ -1,0 +1,17 @@
+[project]
+name = "{{project_name}}"
+package = "{{package_name}}"
+template = "android-rust"
+
+[android]
+language = "kotlin"
+ui = "jetpack-compose"
+min_sdk = 26
+
+[rust]
+crate = "app_core"
+edition = "2021"
+binding = "uniffi"
+
+[build]
+system = "gradle"
