@@ -23,6 +23,44 @@ fn package_name(name: &str) -> String {
     format!("com.example.{slug}")
 }
 
+fn render_template(content: &str, name: &str, package: &str) -> Result<String> {
+    let rendered = content
+        .replace("{{project_name}}", name)
+        .replace("{{package_name}}", package);
+
+    if rendered.contains("{{") || rendered.contains("}}") {
+        bail!("Unresolved template placeholder: {rendered}");
+    }
+
+    Ok(rendered)
+}
+
+fn validate_generated_project(root: &Path) -> Result<()> {
+    const REQUIRED_FILES: &[&str] = &[
+        "anvil.toml",
+        "android/gradlew",
+        "android/settings.gradle.kts",
+        "android/app/build.gradle.kts",
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/main/java",
+        "rust/app_core/Cargo.toml",
+        "rust/app_core/src/lib.rs",
+        "rust/app_core/uniffi.toml",
+    ];
+
+    for relative in REQUIRED_FILES {
+        let path = root.join(relative);
+        if !path.exists() {
+            bail!(
+                "Generated project is incomplete: missing {}",
+                path.display()
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn destination_path(relative: &Path, destination: &Path, package: &str) -> Result<PathBuf> {
     let mut path = destination.to_path_buf();
 
@@ -69,9 +107,8 @@ fn copy_entry(entry: &DirEntry<'_>, destination: &Path, name: &str, package: &st
         .context("Unsupported entry in embedded Android template")?;
 
     let output = match std::str::from_utf8(file.contents()) {
-        Ok(content) => content
-            .replace("{{project_name}}", name)
-            .replace("{{package_name}}", package)
+        Ok(content) => render_template(content, name, package)
+            .with_context(|| format!("Rendering template file: {}", relative.display()))?
             .into_bytes(),
         Err(_) => file.contents().to_vec(),
     };
@@ -139,6 +176,11 @@ pub fn run(name: &str) -> Result<()> {
         }
     }
 
+    if let Err(error) = validate_generated_project(&staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error).context("Validating generated Android project");
+    }
+
     if let Err(error) = fs::rename(&staging, &destination) {
         let _ = fs::remove_dir_all(&staging);
         return Err(error)
@@ -157,4 +199,68 @@ pub fn run(name: &str) -> Result<()> {
     println!();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_project_names() {
+        for name in ["MyApp", "my_app", "app-2", "2App"] {
+            assert!(valid_project_name(name), "Expected valid: {name}");
+        }
+
+        for name in [
+            "",
+            "../escape",
+            "My App",
+            "-app",
+            "app/name",
+            ".hidden",
+            "app.name",
+        ] {
+            assert!(!valid_project_name(name), "Expected invalid: {name}");
+        }
+    }
+
+    #[test]
+    fn generates_package_names() {
+        assert_eq!(package_name("MyApp"), "com.example.myapp");
+        assert_eq!(package_name("Todo-List"), "com.example.todo_list");
+        assert_eq!(package_name("my_app"), "com.example.my_app");
+        assert_eq!(package_name("2App"), "com.example.app_2app");
+    }
+
+    #[test]
+    fn renders_all_supported_placeholders() {
+        let rendered = render_template(
+            "name={{project_name}} package={{package_name}}",
+            "MyApp",
+            "com.example.myapp",
+        )
+        .unwrap();
+
+        assert_eq!(rendered, "name=MyApp package=com.example.myapp");
+    }
+
+    #[test]
+    fn rejects_unknown_placeholders() {
+        assert!(render_template("value={{unknown}}", "MyApp", "com.example.myapp").is_err());
+    }
+
+    #[test]
+    fn replaces_package_path_in_template_paths() {
+        let result = destination_path(
+            Path::new("android/app/src/main/java/{{package_path}}/MainActivity.kt"),
+            Path::new("/tmp/MyApp"),
+            "com.example.myapp",
+        )
+        .unwrap();
+
+        assert_eq!(
+            result,
+            PathBuf::from("/tmp/MyApp/android/app/src/main/java/com/example/myapp/MainActivity.kt")
+        );
+    }
 }
