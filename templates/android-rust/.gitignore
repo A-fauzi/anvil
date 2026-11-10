@@ -1,0 +1,24 @@
+# Rust build artifacts
+**/target/
+
+# Android / Gradle
+**/.gradle/
+**/build/
+**/local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Generated packages
+*.apk
+*.aab
+
+# Signing secrets
+*.jks
+*.keystore
+key.properties
+
+# OS
+.DS_Store

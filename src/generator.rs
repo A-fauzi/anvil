@@ -37,6 +37,7 @@ fn render_template(content: &str, name: &str, package: &str) -> Result<String> {
 
 fn validate_generated_project(root: &Path) -> Result<()> {
     const REQUIRED_FILES: &[&str] = &[
+        ".gitignore",
         "anvil.toml",
         "android/gradlew",
         "android/settings.gradle.kts",
