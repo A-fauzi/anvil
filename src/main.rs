@@ -7,6 +7,7 @@ mod generator;
 mod install;
 mod logs;
 mod project;
+mod sync;
 mod ui;
 
 use anyhow::Result;
@@ -59,6 +60,12 @@ enum Commands {
         project_dir: PathBuf,
     },
 
+    /// Synchronize safe updates from the embedded Anvil template
+    Sync {
+        #[arg(long, default_value = ".")]
+        project_dir: PathBuf,
+    },
+
     /// Clean build artifacts
     Clean {
         #[arg(long, default_value = ".")]
@@ -78,6 +85,7 @@ fn run() -> Result<()> {
         Commands::Install { project_dir } => install::run(&project_dir, verbose),
         Commands::Logs { project_dir } => logs::run(&project_dir),
         Commands::Clean { project_dir } => clean::run(&project_dir),
+        Commands::Sync { project_dir } => sync::run(&project_dir),
     }
 }
 

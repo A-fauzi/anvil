@@ -4,7 +4,7 @@ use include_dir::{include_dir, Dir, DirEntry};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-static TEMPLATE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/android-rust");
+pub(crate) static TEMPLATE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/android-rust");
 
 fn valid_project_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -23,7 +23,7 @@ fn package_name(name: &str) -> String {
     format!("com.example.{slug}")
 }
 
-fn render_template(content: &str, name: &str, package: &str) -> Result<String> {
+pub(crate) fn render_template(content: &str, name: &str, package: &str) -> Result<String> {
     let rendered = content
         .replace("{{project_name}}", name)
         .replace("{{package_name}}", package);
@@ -62,7 +62,11 @@ fn validate_generated_project(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn destination_path(relative: &Path, destination: &Path, package: &str) -> Result<PathBuf> {
+pub(crate) fn destination_path(
+    relative: &Path,
+    destination: &Path,
+    package: &str,
+) -> Result<PathBuf> {
     let mut path = destination.to_path_buf();
 
     for component in relative.components() {
