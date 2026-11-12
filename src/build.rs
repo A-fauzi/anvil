@@ -84,10 +84,9 @@ pub fn run(project_dir: &Path, verbose: bool) -> Result<()> {
             .env("ANDROID_HOME", android_sdk)
             .env("ANDROID_SDK_ROOT", android_sdk)
             .env("ANDROID_NDK_HOME", android_ndk)
+            .env("ANDROID_NDK_ROOT", android_ndk)
             .env("NDK_HOME", android_ndk)
-            .args(["ndk", "-t", "arm64-v8a", "build", "--manifest-path"])
-            .arg(&rust_manifest)
-            .arg("--release"),
+            .args(["ndk", "-t", "arm64-v8a", "build", "--release"]),
         "Compile Rust for Android",
     )?;
 
@@ -109,6 +108,7 @@ pub fn run(project_dir: &Path, verbose: bool) -> Result<()> {
             .env("ANDROID_HOME", android_sdk)
             .env("ANDROID_SDK_ROOT", android_sdk)
             .env("ANDROID_NDK_HOME", android_ndk)
+            .env("ANDROID_NDK_ROOT", android_ndk)
             .env("NDK_HOME", android_ndk)
             .args(["run", "--manifest-path"])
             .arg(&rust_manifest)
